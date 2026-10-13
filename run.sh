@@ -127,13 +127,18 @@ fetch_verified() {
 }
 
 say "Bun ${BUN_VERSION} + cosign ${COSIGN_VERSION} (checksum-pinned)"
-if [ ! -x "${bin}/bun" ] || [ "$("${bin}/bun" --version 2>/dev/null)" != "${BUN_VERSION}" ]; then
-  tmp="$(mktemp -d)"
-  fetch_verified "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${bun_asset}.zip" "${bun_sha}" "${tmp}/bun.zip"
-  unzip -q "${tmp}/bun.zip" -d "${tmp}"
-  install -m 0755 "${tmp}/${bun_asset}/bun" "${bin}/bun"
-  rm -rf "${tmp}"
+# The checksum is published for the archive, not the binary, so Bun is
+# extracted from a verified archive on every run: a binary left in the
+# install dir is never trusted (or executed) before verification. The
+# archive is kept and re-verified, so a re-run downloads only when needed.
+bun_zip="${work}/${bun_asset}-${BUN_VERSION}.zip"
+if [ ! -f "${bun_zip}" ] || ! echo "${bun_sha}  ${bun_zip}" | sha256sum -c --quiet - 2>/dev/null; then
+  fetch_verified "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${bun_asset}.zip" "${bun_sha}" "${bun_zip}"
 fi
+tmp="$(mktemp -d)"
+unzip -q "${bun_zip}" -d "${tmp}"
+install -m 0755 "${tmp}/${bun_asset}/bun" "${bin}/bun"
+rm -rf "${tmp}"
 if [ ! -x "${bin}/cosign" ] || ! echo "${cosign_sha}  ${bin}/cosign" | sha256sum -c --quiet - 2>/dev/null; then
   fetch_verified "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/${cosign_asset}" "${cosign_sha}" "${bin}/cosign"
   chmod 0755 "${bin}/cosign"

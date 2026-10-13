@@ -50,6 +50,8 @@ After you confirm, the installer starts a Cloud Run job named `caelo-install` in
 
 When the job reaches **Waiting for DNS**, it prints the records to set at your registrar. Set them; the job notices on its own once they resolve (it waits up to two hours) and continues with the certificate.
 
+Domain on Cloudflare? Run `export CLOUDFLARE_API_TOKEN=<token with Zone:DNS:Edit>` before `./run.sh` and the install sets these records itself (the token is kept in Secret Manager in your project for the job).
+
 Do not move your main domain yet if a website is live there today. The installer lists those records separately, for when your new site is published.
 
 ## Finish
