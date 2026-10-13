@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MPL-2.0
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck
+        run: shellcheck run.sh scripts/*.sh
+
+      - name: Tutorials have one title each
+        run: |
+          set -euo pipefail
+          for f in gcp.md gcp-firebase.md; do
+            n="$(grep -c '^# ' "${f}")"
+            [ "${n}" = 1 ] || { echo "::error file=${f}::${n} H1 headings (a Cloud Shell tutorial has exactly one)"; exit 1; }
+          done
+
+      - name: Button block renders
+        run: scripts/buttons.sh 0.0.1 | grep -q "cloudshell_git_branch=release-v0.0.1"
+
+      - name: run.sh verifies the pinned release
+        run: |
+          set +e
+          ./run.sh --verify-only
+          code=$?
+          # 3: the pinned release predates the install job (only until the
+          # first release that ships it is pinned).
+          [ "${code}" = 0 ] || [ "${code}" = 3 ]
