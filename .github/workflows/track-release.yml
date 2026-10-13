@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Pin the newest stable Caelo release (epic caelo-cms/caelo-cms#696).
+#
+# Polls caelo-cms/caelo-cms for its latest stable GitHub Release — created
+# only after that release's npm packages, images and signed manifest are
+# published — verifies it with `run.sh --verify-only` (checksum-pinned tools,
+# `npm audit signatures`, provenance naming caelo-cms/caelo-cms on the tag),
+# then commits the pin to main and creates the immutable `release-v<version>`
+# branch + `v<version>` tag the "Open in Cloud Shell" buttons name.
+#
+# Polling instead of a cross-repository dispatch on purpose: a dispatch from
+# caelo-cms's release workflow would need a long-lived token with write
+# access to this repository. This workflow needs only its own GITHUB_TOKEN
+# (read public releases, write this repository).
+
+name: track-release
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Caelo version to pin (e.g. 0.10.47). Default: the latest stable release."
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: track-release
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Which release
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION}" ]; then
+            v="${INPUT_VERSION#v}"
+          else
+            tag="$(gh release view --repo caelo-cms/caelo-cms --json tagName --jq .tagName)"
+            v="${tag#v}"
+          fi
+          if ! [[ "${v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::not a stable version: ${v}"
+            exit 1
+          fi
+          if git ls-remote --exit-code --heads origin "release-v${v}" >/dev/null; then
+            echo "v${v} is pinned already."
+            echo "todo=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          current="$(sed -n 's/^CAELO_VERSION="\(.*\)"$/\1/p' run.sh)"
+          newest="$(printf '%s\n%s\n' "${current}" "${v}" | sort -V | tail -n1)"
+          if [ "${newest}" != "${v}" ]; then
+            echo "::error::v${v} is older than the pinned v${current}; refusing to go back."
+            exit 1
+          fi
+          sed -i "s/^CAELO_VERSION=\".*\"$/CAELO_VERSION=\"${v}\"/" run.sh
+          echo "version=${v}" >> "${GITHUB_OUTPUT}"
+          echo "todo=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify the release (checksums, npm signatures + provenance)
+        id: verify
+        if: steps.rel.outputs.todo == 'true'
+        run: |
+          set +e
+          ./run.sh --verify-only
+          code=$?
+          set -e
+          if [ "${code}" = 3 ]; then
+            echo "::notice::v${{ steps.rel.outputs.version }} predates the Cloud Shell install; nothing to pin."
+            echo "pin=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          [ "${code}" = 0 ] || exit "${code}"
+          echo "pin=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Pin + create release-v<version> and v<version>
+        if: steps.verify.outputs.pin == 'true'
+        env:
+          V: ${{ steps.rel.outputs.version }}
+        run: |
+          set -euo pipefail
+          block="$(scripts/buttons.sh "${V}")"
+          BLOCK="${block}" python3 - <<'PY'
+          import os, re
+          text = open("README.md").read()
+          new = re.sub(
+              r"(<!-- buttons:start -->\n).*?(\n<!-- buttons:end -->)",
+              lambda m: m.group(1) + os.environ["BLOCK"] + m.group(2),
+              text,
+              flags=re.S,
+          )
+          if new == text and os.environ["BLOCK"] not in text:
+              raise SystemExit("README.md has no buttons markers")
+          open("README.md", "w").write(new)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add run.sh README.md
+          # A rerun after a failed push finds the files already pinned.
+          git diff --cached --quiet || git commit -m "chore: pin Caelo v${V}"
+          git tag -f "v${V}"
+          # One atomic push: main, the release branch and the tag land
+          # together or not at all, so a failure leaves nothing half-made
+          # and the next run (which only skips an existing release branch)
+          # starts over cleanly.
+          git push --atomic origin HEAD:main "HEAD:refs/heads/release-v${V}" "refs/tags/v${V}"
+          echo "Pinned v${V}: https://github.com/${GITHUB_REPOSITORY}/tree/release-v${V}" >> "${GITHUB_STEP_SUMMARY}"
