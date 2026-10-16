@@ -110,10 +110,36 @@ case "$(uname -m)" in
 esac
 [ "$(uname -s)" = "Linux" ] || die "run.sh is for Linux (Cloud Shell). On macOS run: bunx @caelo-cms/provisioning@${CAELO_VERSION}"
 
-work="${CAELO_INSTALL_DIR:-${HOME}/.caelo-install}"
+# Free space in MiB on the filesystem holding $1.
+free_mib() { df -Pk "$1" | awk 'NR == 2 { print int($4 / 1024) }'; }
+
+# Everything bulky here (Bun, cosign, ~500 MB of node_modules, npm's cache
+# and logs) is re-downloaded and re-verified on every run, so it lives
+# outside $HOME: Cloud Shell's home is a 5 GB disk that is often already
+# full, while / has tens of GB. Only gcloud's sign-in and the installer's
+# own state (~/.caelo-<install-id>, a few KB) are written to $HOME.
+work="${CAELO_INSTALL_DIR:-${TMPDIR:-/tmp}/caelo-install-$(id -u)}"
 bin="${work}/bin"
+if [ -z "${CAELO_INSTALL_DIR:-}" ] && [ -d "${HOME}/.caelo-install" ]; then
+  # Earlier versions of this script kept the same files in ~/.caelo-install.
+  say "Removing ~/.caelo-install (left by an earlier installer; now kept in ${work})"
+  rm -rf "${HOME}/.caelo-install"
+fi
 mkdir -p "${bin}"
+[ -O "${work}" ] && [ ! -L "${work}" ] || die "${work} is not a directory owned by you; set CAELO_INSTALL_DIR to a directory of your own."
 chmod 700 "${work}"
+
+work_need=1536
+work_free="$(free_mib "${work}")"
+[ "${work_free}" -ge "${work_need}" ] ||
+  die "the installer needs ${work_need} MB free in ${work}, but only ${work_free} MB are free. Set CAELO_INSTALL_DIR to a directory on a disk with more space."
+if [ "${verify_only}" = 0 ]; then
+  home_need=64
+  home_free="$(free_mib "${HOME}")"
+  [ "${home_free}" -ge "${home_need}" ] || die "your home directory is full: ${home_free} MB free, the installer needs ${home_need} MB there for the Google sign-in and the install's state (~/.caelo-*). Cloud Shell's home is limited to 5 GB. See what uses it:
+    du -sh ~/* ~/.[!.]* 2>/dev/null | sort -h | tail
+then delete what you no longer need and run ./run.sh ${provider:---verify-only} again."
+fi
 
 # Download $1 to $3 and check it against the SHA-256 $2.
 fetch_verified() {
@@ -147,8 +173,11 @@ export PATH="${bin}:${PATH}"
 
 say "@caelo-cms/provisioning@${CAELO_VERSION} from npm"
 pkg="${work}/caelo-${CAELO_VERSION}"
-rm -rf "${pkg}"
+rm -rf "${work}"/caelo-* "${work}/npm-logs"
 mkdir -p "${pkg}"
+# npm's cache and logs default to ~/.npm; keep them with the rest (see $work).
+export npm_config_cache="${work}/npm-cache"
+export npm_config_logs_dir="${work}/npm-logs"
 # Exact versions for both Caelo packages: the published provisioning package
 # depends on ^<version> of shared, which could otherwise resolve to a newer one.
 cat >"${pkg}/package.json" <<JSON
@@ -159,7 +188,12 @@ cat >"${pkg}/package.json" <<JSON
   "overrides": { "@caelo-cms/shared": "${CAELO_VERSION}" }
 }
 JSON
-(cd "${pkg}" && npm install --ignore-scripts --no-audit --no-fund --loglevel=error)
+if ! (cd "${pkg}" && npm install --ignore-scripts --no-audit --no-fund --loglevel=error); then
+  # --loglevel=error keeps a good run quiet, but on failure npm prints only
+  # the log's path; surface the cause here.
+  grep -h -E ' (error|verbose stack) ' "${work}"/npm-logs/*.log 2>/dev/null | tail -n 20 >&2 || true
+  die "npm could not install @caelo-cms/provisioning@${CAELO_VERSION} (cause above; full log in ${work}/npm-logs). Fix what it names and run ./run.sh ${provider:---verify-only} again."
+fi
 
 say "Verifying registry signatures + provenance (npm audit signatures)"
 (cd "${pkg}" && npm audit signatures)
