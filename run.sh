@@ -126,7 +126,9 @@ if [ -z "${CAELO_INSTALL_DIR:-}" ] && [ -d "${HOME}/.caelo-install" ]; then
   rm -rf "${HOME}/.caelo-install"
 fi
 mkdir -p "${bin}"
-[ -O "${work}" ] && [ ! -L "${work}" ] || die "${work} is not a directory owned by you; set CAELO_INSTALL_DIR to a directory of your own."
+if [ ! -O "${work}" ] || [ -L "${work}" ]; then
+  die "${work} is not a directory owned by you; set CAELO_INSTALL_DIR to a directory of your own."
+fi
 chmod 700 "${work}"
 
 work_need=1536
