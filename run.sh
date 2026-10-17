@@ -30,7 +30,7 @@
 
 set -euo pipefail
 
-CAELO_VERSION="0.10.52"
+CAELO_VERSION="0.10.53"
 
 BUN_VERSION="1.4.2"
 # github.com/oven-sh/bun/releases/download/bun-v<version>/SHASUMS256.txt
