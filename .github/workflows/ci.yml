@@ -21,10 +21,34 @@ jobs:
       - name: Tutorials have one title each
         run: |
           set -euo pipefail
-          for f in gcp.md gcp-firebase.md; do
+          for f in gcp.md gcp-firebase.md upgrade-gcp.md upgrade-gcp-firebase.md; do
             n="$(grep -c '^# ' "${f}")"
             [ "${n}" = 1 ] || { echo "::error file=${f}::${n} H1 headings (a Cloud Shell tutorial has exactly one)"; exit 1; }
           done
+
+      - name: Upgrade tutorials run the upgrade, never the installer
+        run: |
+          set -euo pipefail
+          for f in upgrade-gcp.md upgrade-gcp-firebase.md; do
+            grep -q '^\./run\.sh upgrade$' "${f}" || { echo "::error file=${f}::no ./run.sh upgrade command block"; exit 1; }
+            if grep -qE '^\./run\.sh gcp' "${f}"; then echo "::error file=${f}::runs the installer"; exit 1; fi
+          done
+
+      - name: run.sh upgrade refuses bad arguments before downloading anything
+        run: |
+          set -uo pipefail
+          expect_fail() {
+            local want="$1"; shift
+            out="$("$@" 2>&1)" && { echo "::error::$* succeeded"; exit 1; }
+            grep -q -- "${want}" <<<"${out}" || { echo "::error::$*: expected '${want}', got: ${out}"; exit 1; }
+            grep -q "Bun " <<<"${out}" && { echo "::error::$* downloaded tools before refusing"; exit 1; }
+            true
+          }
+          expect_fail "takes only --project and --install" ./run.sh upgrade --skip-verify
+          expect_fail "--project needs a value" ./run.sh upgrade --project
+          expect_fail "--install needs a value" ./run.sh upgrade --install --project p
+          expect_fail "never runs Pulumi" ./run.sh upgrade --local
+          ./run.sh --help | grep -q "run.sh upgrade"
 
       - name: Button block renders
         run: scripts/buttons.sh 0.0.1 | grep -q "cloudshell_git_branch=release-v0.0.1"
