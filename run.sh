@@ -81,14 +81,22 @@ while [ "$#" -gt 0 ]; do
   arg="$1"
   shift
   case "${arg}" in
-    gcp | gcp-firebase) [ -z "${provider}" ] && [ "${upgrade}" = 0 ] && provider="${arg}" || passthrough+=("${arg}") ;;
-    upgrade) [ -z "${provider}" ] && [ "${upgrade}" = 0 ] && upgrade=1 || passthrough+=("${arg}") ;;
+    gcp | gcp-firebase | upgrade)
+      # The first of these names the mode; any later one is the installer's.
+      if [ -n "${provider}" ] || [ "${upgrade}" = 1 ]; then
+        passthrough+=("${arg}")
+      elif [ "${arg}" = upgrade ]; then
+        upgrade=1
+      else
+        provider="${arg}"
+      fi
+      ;;
     --project | --install)
       [ "${upgrade}" = 1 ] || {
         passthrough+=("${arg}")
         continue
       }
-      [ "$#" -gt 0 ] && [ "${1#-}" = "$1" ] || die "${arg} needs a value."
+      if [ "$#" = 0 ] || [ "${1#-}" != "$1" ]; then die "${arg} needs a value."; fi
       if [ "${arg}" = --project ]; then upgrade_project="$1"; else upgrade_install="$1"; fi
       shift
       ;;
@@ -347,7 +355,9 @@ if [ "${upgrade}" = 1 ]; then
       echo "Several Caelo installs:"
       for i in "${!found[@]}"; do echo "  $((i + 1))) ${found[${i}]#* } (project ${found[${i}]%% *})"; done
       read -r -p "Which one should be upgraded? [1-${#found[@]}] " pick
-      [[ "${pick}" =~ ^[0-9]+$ ]] && [ "${pick}" -ge 1 ] && [ "${pick}" -le "${#found[@]}" ] || die "no install picked; nothing was changed."
+      if ! [[ "${pick}" =~ ^[0-9]+$ ]] || [ "${pick}" -lt 1 ] || [ "${pick}" -gt "${#found[@]}" ]; then
+        die "no install picked; nothing was changed."
+      fi
       chosen="${found[$((pick - 1))]}"
       ;;
   esac
