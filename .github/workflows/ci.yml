@@ -44,20 +44,37 @@ jobs:
             grep -q "Bun " <<<"${out}" && { echo "::error::$* downloaded tools before refusing"; exit 1; }
             true
           }
-          expect_fail "takes only --project and --install" ./run.sh upgrade --skip-verify
+          expect_fail "takes only --project, --install and --version" ./run.sh upgrade --skip-verify
           expect_fail "--project needs a value" ./run.sh upgrade --project
           expect_fail "--install needs a value" ./run.sh upgrade --install --project p
           expect_fail "never runs Pulumi" ./run.sh upgrade --local
+          expect_fail "--version needs a value" ./run.sh upgrade --version
+          expect_fail "not a stable Caelo version" ./run.sh --verify-only --version 1.0
           ./run.sh --help | grep -q "run.sh upgrade"
 
-      - name: Button block renders
-        run: scripts/buttons.sh 0.0.1 | grep -q "cloudshell_git_branch=release-v0.0.1"
+      - name: Nothing pins a Caelo version
+        # The install buttons always install the newest release; a version
+        # constant here would need a commit per release again.
+        run: |
+          set -euo pipefail
+          if grep -nE '^CAELO_VERSION="[0-9]' run.sh; then echo "::error file=run.sh::run.sh pins a Caelo version"; exit 1; fi
+          if grep -nE 'cloudshell_git_branch=release-v' README.md; then echo "::error file=README.md::an install button names one release"; exit 1; fi
 
-      - name: run.sh verifies the pinned release
+      - name: Button blocks render
+        run: |
+          set -euo pipefail
+          scripts/buttons.sh | grep -q "cloudshell_git_branch=main&"
+          scripts/buttons.sh 0.0.1 | grep -q "cloudshell_git_branch=release-v0.0.1&"
+          # README's block is exactly what the script prints.
+          diff <(sed -n '/<!-- buttons:start -->/,/<!-- buttons:end -->/p' README.md | sed '1d;$d') <(scripts/buttons.sh)
+
+      - name: run.sh resolves and verifies the newest release
         run: |
           set +e
-          ./run.sh --verify-only
+          out="$(./run.sh --verify-only 2>&1)"
           code=$?
-          # 3: the pinned release predates the install job (only until the
-          # first release that ships it is pinned).
+          echo "${out}"
+          set -e
+          grep -q "the newest stable release on npm" <<<"${out}"
+          # 3: the release predates the install job.
           [ "${code}" = 0 ] || [ "${code}" = 3 ]

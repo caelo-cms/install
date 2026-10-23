@@ -6,12 +6,21 @@
 #   ./run.sh gcp            # or: ./run.sh gcp-firebase
 #   ./run.sh gcp --local    # run pulumi up in this terminal instead of the install job
 #   ./run.sh upgrade [--project <id>] [--install <domain>]
-#                           # upgrade an existing install to the pinned release
+#                           # upgrade an existing install (see "Which release")
+#   ./run.sh ... --version <x.y.z>   # any mode: exactly this release
+#
+# Which release: `--version` when given; otherwise the one a
+# `release-v<version>` branch names when this checkout is such a branch (the
+# links Settings → Updates opens for one target release); otherwise the
+# newest stable release, the `latest` dist-tag of @caelo-cms/provisioning on
+# npm. Caelo's release workflow moves that tag only after the release's
+# images and signed manifest are published. Nothing in this repository names
+# a version: whatever is resolved is verified in steps 2-3 before it runs.
 #
 # What it does, in order (nothing here touches your cloud before step 5):
 #   1. Downloads Bun and cosign at the versions pinned below and checks each
 #      against its pinned SHA-256. A mismatch stops the script.
-#   2. Installs @caelo-cms/provisioning at the pinned CAELO_VERSION from npm
+#   2. Installs @caelo-cms/provisioning at the resolved CAELO_VERSION from npm
 #      (lifecycle scripts disabled) and runs `npm audit signatures`, which
 #      verifies the registry signatures and the Sigstore provenance
 #      attestations of every installed package.
@@ -32,16 +41,14 @@
 # fresh, temporary home): steps 1-4 run every time, then it finds the
 # install in the Owner's projects (the ones whose ops bucket holds
 # install/install.json), attaches it from that bucket and runs
-# `upgrade --version <pinned>`. No Application Default Credentials: the
+# `upgrade --version <resolved>`. No Application Default Credentials: the
 # upgrade runs on gcloud's own login only.
 #
-# The release's version pins are updated by this repository's
-# track-release workflow; each pinned release gets a `release-v<version>`
-# branch and a `v<version>` tag that the "Open in Cloud Shell" links name.
+# The track-release workflow creates a `release-v<version>` branch for each
+# verified stable release (the admin's per-release upgrade links name it);
+# the branch is a plain pointer, nothing is written into it.
 
 set -euo pipefail
-
-CAELO_VERSION="0.10.65"
 
 BUN_VERSION="1.4.2"
 # github.com/oven-sh/bun/releases/download/bun-v<version>/SHASUMS256.txt
@@ -64,9 +71,10 @@ die() {
 
 usage() {
   cat <<USAGE
-Usage: ./run.sh <gcp|gcp-firebase> [--local] [installer flags...]
-       ./run.sh upgrade [--project <gcp-project-id>] [--install <domain>]
-       ./run.sh --verify-only      (download + verify, do not run the installer)
+Usage: ./run.sh <gcp|gcp-firebase> [--local] [--version <x.y.z>] [installer flags...]
+       ./run.sh upgrade [--project <gcp-project-id>] [--install <domain>] [--version <x.y.z>]
+       ./run.sh --verify-only [--version <x.y.z>]   (download + verify, do not run the installer)
+Without --version: the release a release-v<version> checkout names, else the newest stable release.
 USAGE
 }
 
@@ -76,6 +84,7 @@ verify_only=0
 local_mode=0
 upgrade_project=""
 upgrade_install=""
+want_version=""
 passthrough=()
 while [ "$#" -gt 0 ]; do
   arg="$1"
@@ -100,6 +109,11 @@ while [ "$#" -gt 0 ]; do
       if [ "${arg}" = --project ]; then upgrade_project="$1"; else upgrade_install="$1"; fi
       shift
       ;;
+    --version)
+      if [ "$#" = 0 ] || [ "${1#-}" != "$1" ]; then die "--version needs a value (x.y.z)."; fi
+      want_version="$1"
+      shift
+      ;;
     --verify-only) verify_only=1 ;;
     --local)
       local_mode=1
@@ -120,7 +134,7 @@ if [ "${upgrade}" = 1 ] && [ "${local_mode}" = 1 ]; then
   die "--local is for installs; ./run.sh upgrade never runs Pulumi."
 fi
 if [ "${upgrade}" = 1 ] && [ "${#passthrough[@]}" -gt 0 ]; then
-  die "./run.sh upgrade takes only --project and --install (got: ${passthrough[*]})."
+  die "./run.sh upgrade takes only --project, --install and --version (got: ${passthrough[*]})."
 fi
 # What to name in "run ... again" messages.
 rerun="./run.sh ${provider:---verify-only}"
@@ -132,6 +146,35 @@ done
 if [ "${verify_only}" = 0 ]; then
   command -v gcloud >/dev/null 2>&1 || die "gcloud is required (Cloud Shell has it)."
 fi
+
+# The release to run (see "Which release" at the top). A version that does
+# not exist on npm fails at the install below; one that was not built by
+# Caelo's release workflow on its tag fails the provenance check.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+if [ -n "${want_version}" ]; then
+  CAELO_VERSION="${want_version}"
+  version_from="--version"
+else
+  branch="$(git -C "${here}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  case "${branch}" in
+    release-v*)
+      CAELO_VERSION="${branch#release-v}"
+      version_from="this checkout's ${branch} branch"
+      ;;
+    *)
+      CAELO_VERSION="$(curl -fsSL --retry 3 "https://registry.npmjs.org/@caelo-cms%2Fprovisioning/latest" |
+        node -e 'let t="";process.stdin.on("data",(c)=>(t+=c)).on("end",()=>{try{process.stdout.write(String(JSON.parse(t).version??""))}catch{}})' ||
+        true)"
+      [ -n "${CAELO_VERSION}" ] ||
+        die "could not look up the newest Caelo release on npm (registry.npmjs.org). Check the network and run ${rerun} again, or name a release: --version <x.y.z>."
+      version_from="the newest stable release on npm"
+      ;;
+  esac
+fi
+[[ "${CAELO_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+  die "not a stable Caelo version: '${CAELO_VERSION}' (from ${version_from}). Use --version <x.y.z>."
+say "Caelo v${CAELO_VERSION} (${version_from})"
+
 if [ "${local_mode}" = 1 ]; then
   command -v pulumi >/dev/null 2>&1 ||
     die "--local runs Pulumi in this shell and needs the Pulumi CLI (https://www.pulumi.com/docs/install/). Without --local the install runs as a job in your project and needs nothing else."
@@ -180,7 +223,6 @@ chmod 700 "${work}"
 # repository; they fill Cloud Shell's 5 GB home over time. Remove the ones
 # that are clones of this repository, never the one running now and never
 # a directory that is something else.
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 for clone in "${HOME}"/cloudshell_open/install "${HOME}"/cloudshell_open/install-*; do
   [ -d "${clone}/.git" ] || continue
   [ "$(cd "${clone}" && pwd -P)" = "${here}" ] && continue

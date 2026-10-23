@@ -1,20 +1,21 @@
 # SPDX-License-Identifier: MPL-2.0
 #
-# Pin the newest stable Caelo release (epic caelo-cms/caelo-cms#696).
+# Give the newest stable Caelo release its `release-v<version>` branch
+# (epic caelo-cms/caelo-cms#696).
+#
+# Nothing here pins a version: run.sh on `main` resolves the newest stable
+# release itself (the npm `latest` dist-tag), so the install buttons always
+# install the newest release. The branch exists only for links that need ONE
+# release: Settings → Updates in the admin opens `release-v<target>` with the
+# upgrade walkthrough, and run.sh on that branch takes the version from the
+# branch name. The branch is a plain pointer to main at the time the release
+# was verified; no commit is written for it.
 #
 # Polls caelo-cms/caelo-cms for its latest stable GitHub Release — created
 # only after that release's npm packages, images and signed manifest are
-# published — verifies it with `run.sh --verify-only` (checksum-pinned tools,
-# `npm audit signatures`, provenance naming caelo-cms/caelo-cms on the tag),
-# then commits the pin to main and creates the immutable `release-v<version>`
-# branch + `v<version>` tag the "Open in Cloud Shell" buttons name.
-#
-# The branch is a snapshot of main, so it carries the install tutorials
-# (gcp.md, gcp-firebase.md) AND the break-glass upgrade tutorials
-# (upgrade-gcp.md, upgrade-gcp-firebase.md, caelo-cms/caelo-cms#816) pinned
-# to that release: Settings → Updates links `release-v<version>` with
-# `cloudshell_tutorial=upgrade-<provider>.md` (caelo-cms's
-# cloudShellUpgradeUrl, from CLOUD_SHELL_UPGRADE_FIRST_VERSION on).
+# published — and verifies it with `run.sh --verify-only --version <v>`
+# (checksum-pinned tools, `npm audit signatures`, provenance naming
+# caelo-cms/caelo-cms on the tag) before the branch is created.
 #
 # Polling instead of a cross-repository dispatch on purpose: a dispatch from
 # caelo-cms's release workflow would need a long-lived token with write
@@ -29,7 +30,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Caelo version to pin (e.g. 0.10.47). Default: the latest stable release."
+        description: "Caelo version to give a branch (e.g. 0.10.47). Default: the latest stable release."
         required: false
 
 permissions:
@@ -40,12 +41,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  pin:
+  branch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Which release
         id: rel
@@ -65,70 +64,41 @@ jobs:
             exit 1
           fi
           if git ls-remote --exit-code --heads origin "release-v${v}" >/dev/null; then
-            echo "v${v} is pinned already."
+            echo "release-v${v} exists already."
             echo "todo=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          current="$(sed -n 's/^CAELO_VERSION="\(.*\)"$/\1/p' run.sh)"
-          newest="$(printf '%s\n%s\n' "${current}" "${v}" | sort -V | tail -n1)"
-          if [ "${newest}" != "${v}" ]; then
-            echo "::error::v${v} is older than the pinned v${current}; refusing to go back."
-            exit 1
-          fi
-          sed -i "s/^CAELO_VERSION=\".*\"$/CAELO_VERSION=\"${v}\"/" run.sh
           echo "version=${v}" >> "${GITHUB_OUTPUT}"
           echo "todo=true" >> "${GITHUB_OUTPUT}"
 
       - name: Verify the release (checksums, npm signatures + provenance)
         id: verify
         if: steps.rel.outputs.todo == 'true'
+        env:
+          V: ${{ steps.rel.outputs.version }}
         run: |
           set +e
-          ./run.sh --verify-only
+          ./run.sh --verify-only --version "${V}"
           code=$?
           set -e
           if [ "${code}" = 3 ]; then
-            echo "::notice::v${{ steps.rel.outputs.version }} predates the Cloud Shell install; nothing to pin."
-            echo "pin=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::v${V} predates the Cloud Shell install; no branch."
+            echo "branch=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           [ "${code}" = 0 ] || exit "${code}"
-          echo "pin=true" >> "${GITHUB_OUTPUT}"
+          echo "branch=true" >> "${GITHUB_OUTPUT}"
 
-      - name: Pin + create release-v<version> and v<version>
-        if: steps.verify.outputs.pin == 'true'
+      - name: Create release-v<version>
+        if: steps.verify.outputs.branch == 'true'
         env:
           V: ${{ steps.rel.outputs.version }}
         run: |
           set -euo pipefail
-          # Every release branch from now on ships both walkthroughs; the
-          # admin links the upgrade one, so a branch without it is a bug.
+          # Every release branch ships both walkthroughs; the admin links the
+          # upgrade one, so a branch without it is a bug.
           for f in gcp.md gcp-firebase.md upgrade-gcp.md upgrade-gcp-firebase.md; do
-            [ -f "${f}" ] || { echo "::error::${f} is missing; refusing to pin v${V}"; exit 1; }
+            [ -f "${f}" ] || { echo "::error::${f} is missing; refusing to create release-v${V}"; exit 1; }
           done
-          block="$(scripts/buttons.sh "${V}")"
-          BLOCK="${block}" python3 - <<'PY'
-          import os, re
-          text = open("README.md").read()
-          new = re.sub(
-              r"(<!-- buttons:start -->\n).*?(\n<!-- buttons:end -->)",
-              lambda m: m.group(1) + os.environ["BLOCK"] + m.group(2),
-              text,
-              flags=re.S,
-          )
-          if new == text and os.environ["BLOCK"] not in text:
-              raise SystemExit("README.md has no buttons markers")
-          open("README.md", "w").write(new)
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add run.sh README.md
-          # A rerun after a failed push finds the files already pinned.
-          git diff --cached --quiet || git commit -m "chore: pin Caelo v${V}"
-          git tag -f "v${V}"
-          # One atomic push: main, the release branch and the tag land
-          # together or not at all, so a failure leaves nothing half-made
-          # and the next run (which only skips an existing release branch)
-          # starts over cleanly.
-          git push --atomic origin HEAD:main "HEAD:refs/heads/release-v${V}" "refs/tags/v${V}"
-          echo "Pinned v${V}: https://github.com/${GITHUB_REPOSITORY}/tree/release-v${V}" >> "${GITHUB_STEP_SUMMARY}"
+          git push origin "HEAD:refs/heads/release-v${V}"
+          echo "Created https://github.com/${GITHUB_REPOSITORY}/tree/release-v${V}" >> "${GITHUB_STEP_SUMMARY}"
