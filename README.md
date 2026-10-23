@@ -28,6 +28,16 @@ Each button opens Google Cloud Shell on a `release-v<version>` branch of this re
 
 To run the infrastructure step in the Cloud Shell terminal itself instead of the job, pass `--local` (needs the Pulumi CLI in that shell).
 
+## Upgrading an install (break-glass)
+
+When a release needs a change that only the Owner's own Google account may make, **Settings → Updates** in the admin shows an **Open Google Cloud Shell** button. It opens this repository on the release's `release-v<version>` branch with the upgrade walkthrough (`upgrade-gcp.md`, `upgrade-gcp-firebase.md`), never the install one. The walkthrough runs one command:
+
+```bash
+./run.sh upgrade [--project <gcp-project-id>] [--install <domain>]
+```
+
+It runs the same verified bootstrap as the installer (checksum-pinned Bun and cosign, `npm audit signatures`, provenance), checks the free disk space and removes earlier clones of this repository from `~/cloudshell_open`, checks that gcloud has a valid sign-in (and asks you to sign in if not), finds the install in your projects (the one whose `<project>-caelo-ops` bucket holds `install/install.json`; it asks if there are several), attaches it from that bucket and runs `upgrade --version <pinned>`. It needs nothing to survive in your home directory between sessions, and no Application Default Credentials.
+
 ## Versions
 
 `run.sh` pins one Caelo release (`CAELO_VERSION`) together with the checksums of the tools it downloads. The [`track-release`](.github/workflows/track-release.yml) workflow checks every 30 minutes for a new stable Caelo release, verifies it with `./run.sh --verify-only` (the same checks as above, on a GitHub runner), then commits the new pin to `main` and creates the `release-v<version>` branch and the `v<version>` tag that the buttons name. It uses only this repository's own `GITHUB_TOKEN`; no token for another repository is stored anywhere. A ruleset keeps `release-v*` branches and `v*` tags from being moved or deleted.

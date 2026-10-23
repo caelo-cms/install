@@ -9,6 +9,13 @@
 # then commits the pin to main and creates the immutable `release-v<version>`
 # branch + `v<version>` tag the "Open in Cloud Shell" buttons name.
 #
+# The branch is a snapshot of main, so it carries the install tutorials
+# (gcp.md, gcp-firebase.md) AND the break-glass upgrade tutorials
+# (upgrade-gcp.md, upgrade-gcp-firebase.md, caelo-cms/caelo-cms#816) pinned
+# to that release: Settings → Updates links `release-v<version>` with
+# `cloudshell_tutorial=upgrade-<provider>.md` (caelo-cms's
+# cloudShellUpgradeUrl, from CLOUD_SHELL_UPGRADE_FIRST_VERSION on).
+#
 # Polling instead of a cross-repository dispatch on purpose: a dispatch from
 # caelo-cms's release workflow would need a long-lived token with write
 # access to this repository. This workflow needs only its own GITHUB_TOKEN
@@ -94,6 +101,11 @@ jobs:
           V: ${{ steps.rel.outputs.version }}
         run: |
           set -euo pipefail
+          # Every release branch from now on ships both walkthroughs; the
+          # admin links the upgrade one, so a branch without it is a bug.
+          for f in gcp.md gcp-firebase.md upgrade-gcp.md upgrade-gcp-firebase.md; do
+            [ -f "${f}" ] || { echo "::error::${f} is missing; refusing to pin v${V}"; exit 1; }
+          done
           block="$(scripts/buttons.sh "${V}")"
           BLOCK="${block}" python3 - <<'PY'
           import os, re
