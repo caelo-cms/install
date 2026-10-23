@@ -3,12 +3,12 @@
 Install [Caelo CMS](https://github.com/caelo-cms/caelo-cms) in your own Google Cloud project from your browser: click the button, sign in, answer a few questions, confirm the cost. No laptop, no CLI to install, no service-account key.
 
 <!-- buttons:start -->
-Caelo **v0.10.64**:
+Caelo **v0.10.65**:
 
 | Provider | |
 |---|---|
-| Google Cloud — load balancer + Cloud CDN (`gcp`) | [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/caelo-cms/install&cloudshell_git_branch=release-v0.10.64&cloudshell_tutorial=gcp.md) |
-| Google Cloud — Firebase Hosting (`gcp-firebase`) | [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/caelo-cms/install&cloudshell_git_branch=release-v0.10.64&cloudshell_tutorial=gcp-firebase.md) |
+| Google Cloud — load balancer + Cloud CDN (`gcp`) | [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/caelo-cms/install&cloudshell_git_branch=release-v0.10.65&cloudshell_tutorial=gcp.md) |
+| Google Cloud — Firebase Hosting (`gcp-firebase`) | [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/caelo-cms/install&cloudshell_git_branch=release-v0.10.65&cloudshell_tutorial=gcp-firebase.md) |
 <!-- buttons:end -->
 
 Each button opens Google Cloud Shell on a `release-v<version>` branch of this repository, with a step-by-step tutorial (`gcp.md`, `gcp-firebase.md`) next to the terminal. Full documentation: [caelo-cms.com/install-gcp](https://caelo-cms.com/install-gcp).
