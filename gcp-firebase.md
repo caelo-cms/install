@@ -19,7 +19,7 @@ Click **Start** to begin.
 ./run.sh gcp-firebase
 ```
 
-Before anything runs, `run.sh` downloads Bun and cosign at pinned versions and checks their checksums, installs `@caelo-cms/provisioning` at the version this link is pinned to, and verifies with `npm audit signatures` that it was built from `github.com/caelo-cms/caelo-cms` by Caelo's release workflow. If this shell is not signed in to Google Cloud yet, it asks you to sign in (open the link it prints, sign in with the account that owns or will own the project, paste the code back). Then the installer asks for:
+Before anything runs, `run.sh` downloads Bun and cosign at pinned versions and checks their checksums, installs `@caelo-cms/provisioning` at the newest stable Caelo release (it prints which), and verifies with `npm audit signatures` that it was built from `github.com/caelo-cms/caelo-cms` by Caelo's release workflow. If this shell is not signed in to Google Cloud yet, it asks you to sign in (open the link it prints, sign in with the account that owns or will own the project, paste the code back). Then the installer asks for:
 
 1. the **Google Cloud project id**: a new one is created for you; an existing one is reused,
 2. your **domain**, the **staging host** and the **owner email** (the Google account that may open the admin),
