@@ -30,17 +30,15 @@ It then sets up the project and shows the **estimated monthly cost**. Nothing bi
 
 ## Let the install run
 
-After you confirm, the installer starts a Cloud Run job named `caelo-install` in your project and shows its progress here. The job builds the infrastructure (about 10-15 minutes), then waits for DNS and the TLS certificate.
+After you confirm, the installer starts a Cloud Run job named `caelo-install` in your project and shows its progress here. The job builds the infrastructure (about 10-15 minutes). It does not wait for DNS: the admin starts on its Cloud Run URL, so you can try Caelo before your domain points anywhere.
 
 **You can close this tab.** The install keeps running in your project: Ctrl-C, a closed tab and Cloud Shell's 40-minute idle timeout do not stop it. To follow it again, open the same "Open in Cloud Shell" link and run `./run.sh gcp-firebase` with the same project id. It attaches to the running install, or shows the result if it has finished.
 
-## Set the DNS records
+## DNS records (later)
 
-When the job reaches **Waiting for DNS**, it prints the records to set at your registrar. Set them; the job notices on its own once they resolve (it waits up to two hours) and continues with the certificate.
+No DNS record is needed to finish the install. When the job is done, the summary lists the records for your domain: set them when your new site is ready to go live, and Firebase Hosting issues the certificate once they point at it. Do not move your main domain while a website is live there today.
 
-Domain on Cloudflare? Run `export CLOUDFLARE_API_TOKEN=<token with Zone:DNS:Edit>` before `./run.sh` and the install sets these records itself (the token is kept in Secret Manager in your project for the job).
-
-Do not move your main domain yet if a website is live there today. The installer lists those records separately, for when your new site is published.
+The admin's own `admin.<domain>` host and the protected staging host are optional; the summary prints the command that sets up each one (`admin-domain enable`, `staging-domain enable`) and the record it needs.
 
 ## Finish
 
@@ -48,6 +46,6 @@ When the job is done, this terminal shows the **Owner setup link**. Open it and 
 
 If the run stopped with an error, fix what it names and run `./run.sh gcp-firebase` again: it resumes where it stopped.
 
-Troubleshooting: https://caelo-cms.com/install-gcp#common-issues
+Troubleshooting: https://caelo-cms.com/docs/install/google-cloud/
 
 <walkthrough-conclusion-trophy></walkthrough-conclusion-trophy>

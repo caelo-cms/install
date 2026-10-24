@@ -48,6 +48,6 @@ When the job is done, this terminal shows the **Owner setup link**. Open it and 
 
 If the run stopped with an error, fix what it names and run `./run.sh gcp` again: it resumes where it stopped.
 
-Troubleshooting: https://caelo-cms.com/install-gcp#common-issues
+Troubleshooting: https://caelo-cms.com/docs/install/google-cloud/
 
 <walkthrough-conclusion-trophy></walkthrough-conclusion-trophy>

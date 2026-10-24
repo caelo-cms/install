@@ -9,7 +9,7 @@ Install [Caelo CMS](https://github.com/caelo-cms/caelo-cms) in your own Google C
 | Google Cloud — Firebase Hosting (`gcp-firebase`) | [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/caelo-cms/install&cloudshell_git_branch=main&cloudshell_tutorial=gcp-firebase.md) |
 <!-- buttons:end -->
 
-Each button opens Google Cloud Shell on this repository's `main` branch, which always installs the newest stable Caelo release, with a step-by-step tutorial (`gcp.md`, `gcp-firebase.md`) next to the terminal. Full documentation: [caelo-cms.com/install-gcp](https://caelo-cms.com/install-gcp).
+Each button opens Google Cloud Shell on this repository's `main` branch, which always installs the newest stable Caelo release, with a step-by-step tutorial (`gcp.md`, `gcp-firebase.md`) next to the terminal. Full documentation: [caelo-cms.com/docs/install/google-cloud](https://caelo-cms.com/docs/install/google-cloud/).
 
 ## What happens when you click
 
@@ -20,7 +20,7 @@ Each button opens Google Cloud Shell on this repository's `main` branch, which a
    - runs `npm audit signatures`, which verifies the registry signature and the Sigstore provenance attestation of every installed package;
    - checks that the two Caelo packages' provenance names `github.com/caelo-cms/caelo-cms`, built on the tag `v<version>`.
 3. **The installer** asks for the project, domain, owner email and region, sets up the project with your Google login, shows the **monthly cost** and asks before it creates anything billable.
-4. **The install job.** The installer verifies the release's signed manifest with cosign (signed by Caelo's release workflow on that tag) and starts a Cloud Run job in your project, running the `caelo-ops` image pinned by the manifest's digest, as the project's `caelo-provisioner` service account. The job builds the infrastructure, waits for DNS and the certificate, and stores the Owner setup link in Secret Manager. Your terminal follows its log.
+4. **The install job.** The installer verifies the release's signed manifest with cosign (signed by Caelo's release workflow on that tag) and starts a Cloud Run job in your project, running the `caelo-ops` image pinned by the manifest's digest, as the project's `caelo-provisioner` service account. The job builds the infrastructure — on `gcp` it also waits for DNS and the certificate of the admin host; on `gcp-firebase` the admin starts on its Cloud Run URL, so no DNS is needed yet — and stores the Owner setup link in Secret Manager. Your terminal follows its log.
 
 **Closing the tab does not stop the install.** Cloud Shell ends idle sessions after 40 minutes and the session's home directory is temporary; the install's state lives in your project (`gs://<project>-caelo-ops`). Open the same link again, sign in and run `./run.sh` with the same project: it attaches to the running install, shows the result of a finished one, or resumes one that stopped.
 
